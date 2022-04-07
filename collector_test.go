@@ -30,7 +30,10 @@ func TestIpmitoolConfig(t *testing.T) {
 func TestSplitSensorOutput(t *testing.T) {
 	collSensorOutput := `CPU1 Temp        | 31.000     | degrees C  | ok    | 0.000     | 0.000     | 0.000     | 90.000    | 95.000    | 95.000
 P1-DIMMA2 Temp   | na         |            | na    | na        | na        | na        | na        | na        | na
-Chassis Intru    | 0x0        | discrete   | 0x0000| na        | na        | na        | na        | na        | na`
+Chassis Intru    | 0x0        | discrete   | 0x0000| na        | na        | na        | na        | na        | na
+temp             | 32.000     | degrees C  | ok    | na        | 0.000     | 0.000     | 70.000    | 75.000    | na
+temp             | 31.000     | degrees C  | ok    | na        | 0.000     | 0.000     | 70.000    | 75.000    | na
+Sys Health LED   | 0x0        | discrete   | 0x0180| na        | na        | na        | na        | na        | na`
 	res, err := splitSensorOutput(collSensorOutput)
 	expectName := "CPU1Temp"
 	expectValue := float64(0)
@@ -46,6 +49,7 @@ Chassis Intru    | 0x0        | discrete   | 0x0000| na        | na        | na 
 	if res[2].Value != expectValue {
 		t.Errorf("HEX to float64 conversion failed.\n Expect: %f\n Got: %f", expectValue, res[2].Value)
 	}
+	//fmt.Printf("state: %+v\n", res)
 }
 
 func TestSplitFwumOutput(t *testing.T) {

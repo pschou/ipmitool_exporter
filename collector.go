@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"fmt"
 	"math"
 	"os/exec"
 	"regexp"
@@ -182,7 +183,7 @@ var (
 
 	currentStateDesc = prometheus.NewDesc(
 		prometheus.BuildFQName(namespace, "current", "state"),
-		"Reported state of a current sensor (0=ok, 1=critical, 2=non-recoverable, 3=non-critical, 4=not-specified).",
+		"Reported state of a current sensor (0=ok, 1=critical, 2=non-recoverable, 3=non-critical, 4=not-specified, 5=not-present, 6=failure, 7=power-down).",
 		[]string{"name"},
 		nil,
 	)
@@ -336,24 +337,41 @@ func splitSensorOutput(impitoolOutput string) ([]sensorData, error) {
 		if len(line) > 0 {
 			trimmedL := strings.ReplaceAll(line, " ", "")
 			splittedL := strings.Split(trimmedL, "|")
-			data.Name = splittedL[0]
-			valueS := splittedL[1]
-			convValueS, convErr := strconv.ParseUint(valueS, 0, 64)
-			if valueS != "na" && convErr != nil {
-				data.Value, err = strconv.ParseFloat(valueS, 64)
-				if err != nil {
-					continue
+			if len(splittedL) > 3 {
+				data.Name = splittedL[0]
+				valueS := splittedL[1]
+				convValueS, convErr := strconv.ParseUint(valueS, 0, 64)
+				if valueS != "na" && convErr != nil {
+					data.Value, err = strconv.ParseFloat(valueS, 64)
+					if err != nil {
+						continue
+					}
+				} else if valueS != "na" && convErr == nil {
+					data.Value = float64(convValueS)
+				} else {
+					data.Value = math.NaN()
 				}
-			} else if valueS != "na" && convErr == nil {
-				data.Value = float64(convValueS)
-			} else {
-				data.Value = math.NaN()
+				data.Type = splittedL[2]
+				data.State = splittedL[3]
+				result = append(result, data)
 			}
-			data.Type = splittedL[2]
-			data.State = splittedL[3]
-			result = append(result, data)
 		}
 	}
+	// Look for duplicates and index them
+	var counter int
+	for i, data := range result {
+		counter = 0
+		for j, test := range result[i+1:] {
+			if test.Name == data.Name {
+				if counter == 0 {
+					result[i].Name = data.Name + "__1"
+				}
+				counter++
+				result[j+i+1].Name = fmt.Sprintf("%s__%d", test.Name, counter+1)
+			}
+		}
+	}
+
 	return result, err
 }
 
@@ -444,10 +462,12 @@ func splitFwumOutput(impitoolOutput string) ([]fwumData, error) {
 		sanitizedL := re.FindStringSubmatch(trimmedL)
 		if sanitizedL != nil {
 			splittedL := strings.Split(trimmedL, ":")
-			data.Name = splittedL[0]
-			data.Value, err = strconv.ParseFloat(splittedL[1], 64)
-			if err != nil {
-				return result, err
+			if len(splittedL) > 1 {
+				data.Name = splittedL[0]
+				data.Value, err = strconv.ParseFloat(splittedL[1], 64)
+				if err != nil {
+					return result, err
+				}
 			}
 		}
 		result = append(result, data)
@@ -535,9 +555,11 @@ func splitFruOutput(impitoolOutput string) ([]fruData, error) {
 			}
 			trimmedL := strings.ReplaceAll(line, " ", "")
 			splittedL := strings.Split(trimmedL, ":")
-			data.Name = splittedL[0]
-			data.Value = splittedL[1]
-			result = append(result, data)
+			if len(splittedL) > 1 {
+				data.Name = splittedL[0]
+				data.Value = splittedL[1]
+				result = append(result, data)
+			}
 		}
 	}
 	return result, err
@@ -723,10 +745,18 @@ func collectSensorMonitoring(ch chan<- prometheus.Metric, target ipmiTarget) (in
 			state = 3
 		case "ns":
 			state = 4
-		case "0x0000":
+		case "0x0000", "0x0080":
 			state = 0
 		case "0x0100":
 			state = 1
+		case "0x0180":
+			state = 5
+		case "0x0280":
+			state = 6
+		case "0x0480":
+			state = 7
+		case "0x4080":
+			state = 8
 		case "na":
 			state = math.NaN()
 		default:
