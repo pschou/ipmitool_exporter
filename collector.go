@@ -340,16 +340,24 @@ func splitSensorOutput(impitoolOutput string) ([]sensorData, error) {
 			if len(splittedL) > 3 {
 				data.Name = splittedL[0]
 				valueS := splittedL[1]
-				convValueS, convErr := strconv.ParseUint(valueS, 0, 64)
-				if valueS != "na" && convErr != nil {
-					data.Value, err = strconv.ParseFloat(valueS, 64)
+				if strings.HasPrefix(valueS, "0x") || strings.HasPrefix(valueS, "0X") {
+					convValueS, err := strconv.ParseUint(valueS[2:], 16, 64)
 					if err != nil {
 						continue
 					}
-				} else if valueS != "na" && convErr == nil {
 					data.Value = float64(convValueS)
 				} else {
-					data.Value = math.NaN()
+					convValueS, convErr := strconv.ParseUint(valueS, 10, 64)
+					if valueS != "na" && convErr != nil {
+						data.Value, err = strconv.ParseFloat(valueS, 64)
+						if err != nil {
+							continue
+						}
+					} else if valueS != "na" && convErr == nil {
+						data.Value = float64(convValueS)
+					} else {
+						data.Value = math.NaN()
+					}
 				}
 				data.Type = splittedL[2]
 				data.State = splittedL[3]
